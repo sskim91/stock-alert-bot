@@ -13,6 +13,12 @@ from src.stock.fetcher import fetch_stock_data
 class TestFetchStockData:
     """fetch_stock_data 함수 테스트"""
 
+    def test_print_dataframe(self) :
+        stock_data = fetch_stock_data("QQQM", period="30d")
+
+        print(stock_data)
+
+
     def test_valid_symbol_returns_dataframe(self):
         """
         테스트 1: 유효한 심볼(TSLA)을 넣으면 데이터가 나와야 함
