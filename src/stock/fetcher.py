@@ -2,6 +2,9 @@
 import yfinance as yf # 야후 파이낸스에서 주가 데이터를 가져오는 라이브러리
 import pandas as pd # 데이터를 표(테이블) 형태로 다루는 라이브러리
 
+pd.set_option('display.max_columns', None)  # 컬럼 다 보기
+pd.set_option('display.max_rows', None)  # 행도 다 보기 (데이터 많으면 주의!)
+pd.set_option('display.width', None)  # 화면 폭 제한 없음
 
 def fetch_stock_data(symbol: str, period: str = "1y") -> pd.DataFrame:
     """

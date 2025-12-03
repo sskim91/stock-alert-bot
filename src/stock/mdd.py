@@ -19,7 +19,7 @@ def calculate_mdd(prices: pd.Series) -> float:
     3. 그 중 가장 큰 하락폭이 MDD
 
     Args:
-        prices: 주가 데이터 (pandas Series, 보통 종가 Close)
+        prices: 주가 데이터 (pandas Series, 보통 종가 Close) (숫자들의 리스트 같은 것)
 
     Returns:
         MDD 값 (퍼센트, 예: -33.5는 33.5% 하락을 의미)
