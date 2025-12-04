@@ -29,24 +29,15 @@ cp .env.example .env
 
 ## 실행 방법
 
-### 1. 단일 실행 (Cron용)
+### 1. 봇 모드 (권장)
 ```bash
-# 기본 실행 (1년 기준)
-uv run python main.py
-
-# 특정 기간으로 실행
-uv run python main.py --period 6mo
-uv run python main.py --period 3mo
-
-# 도움말
-uv run python main.py --help
-```
-
-### 2. 텔레그램 봇 모드
-```bash
-# 봇 명령어 대기 모드
+# 봇 모드 실행 - 스케줄러 + 명령어 대기
 uv run python main.py --bot
 ```
+
+봇 모드는 **두 가지 기능을 동시에 제공**합니다:
+- **자동 알림**: 매일 `ALERT_TIME`(기본 09:00)에 자동으로 리포트 전송
+- **명령어 응답**: 텔레그램에서 `/report` 명령어로 즉시 리포트 요청 가능
 
 **지원 명령어:**
 | 명령어 | 설명 |
@@ -55,6 +46,18 @@ uv run python main.py --bot
 | `/report 6mo` | 6개월 기간으로 리포트 요청 |
 | `/status` | 현재 설정 확인 |
 | `/help` | 도움말 |
+
+### 2. 단일 실행 (수동 또는 외부 스케줄러용)
+```bash
+# 기본 실행 (1년 기준)
+uv run python main.py
+
+# 특정 기간으로 실행
+uv run python main.py --period 6mo
+
+# 도움말
+uv run python main.py --help
+```
 
 ## 환경 변수
 
@@ -96,53 +99,11 @@ ANALYSIS_PERIOD=1y
 EOF
 ```
 
-### 3. Crontab 설정 (매일 자동 실행)
+### 3. 봇 모드 상시 실행 (권장)
 
-```bash
-# crontab 편집
-crontab -e
-
-# 매일 오전 9시 (한국시간) 실행 - 서버가 UTC인 경우 0시
-# 로그 파일로 출력 저장
-0 0 * * * cd /home/ubuntu/dev/stock-alert-bot && /home/ubuntu/.local/bin/uv run python main.py >> /home/ubuntu/logs/stock-alert.log 2>&1
-```
-
-**Crontab 시간 설정 참고:**
-```
-# ┌───────────── 분 (0-59)
-# │ ┌───────────── 시 (0-23)
-# │ │ ┌───────────── 일 (1-31)
-# │ │ │ ┌───────────── 월 (1-12)
-# │ │ │ │ ┌───────────── 요일 (0-6, 0=일요일)
-# │ │ │ │ │
-# * * * * * command
-
-# 예시:
-0 0 * * *     # 매일 00:00 (UTC) = 09:00 (KST)
-0 0 * * 1-5   # 평일만 00:00 (UTC)
-0 9 * * *     # 매일 09:00 (서버 시간)
-```
-
-### 4. 로그 디렉토리 생성
-
-```bash
-mkdir -p /home/ubuntu/logs
-```
-
-### 5. 테스트 실행
-
-```bash
-# 수동 테스트
-cd /home/ubuntu/dev/stock-alert-bot
-uv run python main.py
-
-# crontab 로그 확인
-tail -f /home/ubuntu/logs/stock-alert.log
-```
-
-### 6. 봇 모드로 상시 실행 (선택사항)
-
-systemd 서비스로 봇 모드를 상시 실행하려면:
+systemd 서비스로 봇 모드를 상시 실행합니다.
+봇 모드는 **스케줄러가 내장**되어 있어 매일 `ALERT_TIME`에 자동으로 리포트를 전송하고,
+동시에 `/report` 명령어로 즉시 리포트를 받을 수 있습니다.
 
 ```bash
 # 서비스 파일 생성

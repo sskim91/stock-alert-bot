@@ -1,19 +1,18 @@
 """Stock Alert Bot - 메인 실행 파일
 
-이 파일은 crontab 또는 텔레그램 봇 모드로 실행됩니다.
+실행 모드:
+    1. 봇 모드 (권장): 스케줄러 + 명령어 대기를 동시에 처리
+    2. 단일 실행: 한 번 실행 후 종료 (외부 스케줄러 사용 시)
 
 사용법:
-    # 기본 실행 (환경변수 ANALYSIS_PERIOD 사용, 기본값 1y)
-    uv run python main.py
-
-    # 기간 지정 실행
-    uv run python main.py --period 6mo
-
-    # 텔레그램 봇 모드 (명령어 수신 대기)
+    # 봇 모드 (권장) - 스케줄러 내장 + 명령어 대기
     uv run python main.py --bot
 
-    # crontab 설정 (매일 오전 9시)
-    0 9 * * * cd /path/to/stock-alert-bot && uv run python main.py >> logs/stock-alert.log 2>&1
+    # 단일 실행 (환경변수 ANALYSIS_PERIOD 사용, 기본값 1y)
+    uv run python main.py
+
+    # 단일 실행 - 기간 지정
+    uv run python main.py --period 6mo
 """
 
 import argparse
@@ -99,7 +98,7 @@ async def send_report(notifier: TelegramNotifier, period: str) -> bool:
     fear_greed = get_fear_greed_index()
 
     if fear_greed.get("score") is not None:
-        print(f"  ✓ Score: {fear_greed['score']:.1f} ({fear_greed['rating']})")
+        print(f"  ✓ Score: {fear_greed.get('score'):.1f} ({fear_greed.get('rating', 'unknown')})")
     else:
         print(f"  ⚠️ Error: {fear_greed.get('error', 'Unknown')}")
 
@@ -147,7 +146,7 @@ def run_once(period: str) -> int:
 
 
 def run_bot():
-    """봇 모드 - 텔레그램 명령어 수신 대기"""
+    """봇 모드 - 스케줄러 + 명령어 대기"""
     from src.notifiers.telegram import run_telegram_bot
 
     print(f"\n🤖 Stock Alert Bot (Bot Mode) 시작 - {datetime.now()}")
