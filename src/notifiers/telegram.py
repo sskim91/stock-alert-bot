@@ -15,8 +15,8 @@ python-telegram-bot 라이브러리를 사용한 비동기 메시지 전송 및 
 
 import datetime
 
-from telegram import Bot, Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Bot, Update, ReplyKeyboardMarkup
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 from telegram.error import TelegramError
 
 from src.config import Config
@@ -185,20 +185,30 @@ async def _collect_report_data(period: str) -> tuple[dict, list[dict]]:
 # 텔레그램 봇 명령어 핸들러
 # ============================================================
 
+# 키보드 버튼 정의
+MAIN_KEYBOARD = ReplyKeyboardMarkup(
+    [
+        ["📊 리포트", "📈 상태"],
+        ["📆 6개월", "📆 3개월"],
+    ],
+    resize_keyboard=True,  # 키보드 크기 자동 조절
+)
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """도움말 명령어 핸들러"""
     help_text = """<b>Stock Alert Bot</b>
 
-<b>명령어</b>
-/report - 리포트 요청
-/report [기간] - 특정 기간으로 리포트
-/status - 현재 설정 확인
-/help - 도움말
+<b>버튼 또는 명령어</b>
+📊 리포트 - 1년 기준 리포트
+📆 6개월/3개월 - 해당 기간 리포트
+📈 상태 - 현재 설정 확인
 
-<b>기간</b>
-1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, max"""
+<b>직접 입력</b>
+/report [기간] - 특정 기간 리포트
+(1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, max)"""
 
-    await update.message.reply_text(help_text, parse_mode="HTML")
+    await update.message.reply_text(help_text, parse_mode="HTML", reply_markup=MAIN_KEYBOARD)
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -265,6 +275,23 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(error_msg)
 
 
+async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """키보드 버튼 클릭 처리"""
+    text = update.message.text
+
+    if text == "📊 리포트":
+        context.args = []  # 기본 기간 (1y)
+        await cmd_report(update, context)
+    elif text == "📆 6개월":
+        context.args = ["6mo"]
+        await cmd_report(update, context)
+    elif text == "📆 3개월":
+        context.args = ["3mo"]
+        await cmd_report(update, context)
+    elif text == "📈 상태":
+        await cmd_status(update, context)
+
+
 async def scheduled_daily_report(context: ContextTypes.DEFAULT_TYPE):
     """매일 정해진 시간에 자동으로 리포트를 전송합니다."""
     chat_id = context.job.chat_id
@@ -321,6 +348,7 @@ def run_telegram_bot():
     application.add_handler(CommandHandler("start", cmd_help))
     application.add_handler(CommandHandler("status", cmd_status))
     application.add_handler(CommandHandler("report", cmd_report))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_button))
 
     job_queue = application.job_queue
     alert_time = _parse_alert_time(Config.ALERT_TIME)
