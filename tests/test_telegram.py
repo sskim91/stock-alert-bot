@@ -60,13 +60,32 @@ class TestTelegramNotifier:
             "previous_close": 24.0,
         }
 
-        mdd_results = [
-            {"symbol": "TSLA", "mdd": -15.32, "current_price": 250.50},
-            {"symbol": "SCHD", "mdd": -5.21, "current_price": 78.30},
-            {"symbol": "SCHG", "mdd": -8.45, "current_price": 95.10},
+        # 새로운 형식: 52주 고점 대비 하락률 + 매수 신호
+        stock_results = [
+            {
+                "symbol": "TSLA",
+                "peak_price": 300.00,
+                "current_price": 250.50,
+                "drawdown_pct": -16.5,
+                "buy_signal": "1차 매수 (정찰병)",
+            },
+            {
+                "symbol": "SCHD",
+                "peak_price": 80.00,
+                "current_price": 78.30,
+                "drawdown_pct": -2.1,
+                "buy_signal": "",
+            },
+            {
+                "symbol": "SCHG",
+                "peak_price": 100.00,
+                "current_price": 70.00,
+                "drawdown_pct": -30.0,
+                "buy_signal": "3차 매수 (과매도 구간)",
+            },
         ]
 
-        result = await notifier.send_daily_report(fear_greed, mdd_results)
+        result = await notifier.send_daily_report(fear_greed, stock_results)
 
         assert result["ok"] is True
 

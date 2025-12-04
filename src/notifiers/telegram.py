@@ -82,7 +82,7 @@ class TelegramNotifier:
     async def send_daily_report(
         self,
         fear_greed: dict,
-        mdd_results: list[dict],
+        stock_results: list[dict],
     ) -> dict:
         """
         일일 리포트를 보기 좋게 포맷팅해서 전송합니다.
@@ -90,8 +90,17 @@ class TelegramNotifier:
         Args:
             fear_greed: Fear & Greed Index 데이터
                 {"score": 24.5, "rating": "extreme fear", ...}
-            mdd_results: 각 종목의 MDD 결과 리스트
-                [{"symbol": "TSLA", "mdd": -15.3, "current_price": 250.0}, ...]
+            stock_results: 각 종목의 고점 대비 하락률 및 매수 신호
+                [
+                    {
+                        "symbol": "TSLA",
+                        "peak_price": 500.0,
+                        "current_price": 446.74,
+                        "drawdown_pct": -10.8,
+                        "buy_signal": "1차 매수 (정찰병)",
+                    },
+                    ...
+                ]
 
         Returns:
             send_message()와 동일한 형식
@@ -105,13 +114,12 @@ class TelegramNotifier:
 
         # Fear & Greed Index 섹션
         lines.append("<b>Fear & Greed Index</b>")
-        score = fear_greed.get("score")  # 한 번만 조회
+        score = fear_greed.get("score")
         if score is not None:
-            rating = fear_greed.get("rating", "unknown")  # KeyError 방지
+            rating = fear_greed.get("rating", "unknown")
             lines.append(f"  Score: {score:.1f} ({rating})")
 
             # 이전 데이터가 있으면 변화량 표시
-            # None 체크: 0도 유효한 값이므로 is not None 사용
             prev = fear_greed.get("previous_close")
             if prev is not None:
                 try:
@@ -119,31 +127,42 @@ class TelegramNotifier:
                     arrow = "+" if diff >= 0 else ""
                     lines.append(f"  vs Yesterday: {arrow}{diff:.1f}")
                 except (TypeError, ValueError):
-                    pass  # 숫자 변환 실패 시 무시
+                    pass
         else:
             lines.append(f"  Error: {fear_greed.get('error', 'Unknown')}")
 
         lines.append("")
 
-        # MDD 섹션
-        lines.append("<b>MDD (1 Month)</b>")
-        for item in mdd_results:
+        # 52주 고점 대비 하락률 & 매수 신호 섹션
+        lines.append("<b>52주 고점 대비 & 매수 신호</b>")
+        for item in stock_results:
             symbol = item.get("symbol")
-            mdd = item.get("mdd")
-            price = item.get("current_price", 0)
+            drawdown_pct = item.get("drawdown_pct")
+            peak_price = item.get("peak_price", 0)
+            current_price = item.get("current_price", 0)
+            buy_signal = item.get("buy_signal", "")
 
             # 필수 데이터가 없으면 건너뛰기
-            if not symbol or mdd is None:
+            if not symbol or drawdown_pct is None:
                 continue
 
             try:
-                lines.append(f"  {symbol}: {float(mdd):.2f}% (${float(price):.2f})")
+                # 종목 정보 라인
+                lines.append(
+                    f"  <b>{symbol}</b>: {float(drawdown_pct):.1f}% "
+                    f"(${float(current_price):.2f})"
+                )
+                # 52주 최고가 표시
+                lines.append(f"    Peak: ${float(peak_price):.2f}")
+                # 매수 신호 표시 (있을 때만)
+                if buy_signal:
+                    lines.append(f"    → <b>{buy_signal}</b>")
+                else:
+                    lines.append("    → 관망")
             except (TypeError, ValueError):
-                # 숫자 변환 실패 시 해당 항목 건너뛰기
                 continue
 
         # 리스트를 줄바꿈으로 합치기
-        # Java: String.join("\n", lines)
         message = "\n".join(lines)
 
         # await으로 비동기 전송

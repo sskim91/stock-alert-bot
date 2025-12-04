@@ -17,46 +17,63 @@ from datetime import datetime
 # 우리가 만든 모듈들
 from src.config import Config
 from src.stock.fetcher import fetch_stock_data
-from src.stock.mdd import calculate_mdd
+from src.stock.mdd import calculate_drawdown_from_peak, get_buy_signal
 from src.indicators.fear_greed import get_fear_greed_index
 from src.notifiers.telegram import TelegramNotifier
 
 
-def collect_mdd_data(symbols: list[str]) -> list[dict]:
+# 분석 기간 설정 (52주 = 1년)
+ANALYSIS_PERIOD = "1y"
+
+
+def collect_stock_data(symbols: list[str]) -> list[dict]:
     """
-    각 종목의 MDD와 현재가를 수집합니다.
+    각 종목의 고점 대비 하락률과 매수 신호를 수집합니다.
 
     Args:
         symbols: 종목 심볼 리스트 (예: ["TSLA", "SCHD", "SCHG"])
 
     Returns:
-        [{"symbol": "TSLA", "mdd": -15.3, "current_price": 250.0}, ...]
+        [
+            {
+                "symbol": "TSLA",
+                "peak_price": 500.0,      # 52주 최고가
+                "current_price": 400.0,   # 현재가
+                "drawdown_pct": -20.0,    # 고점 대비 하락률
+                "buy_signal": "2차 매수 (비중 확대)",  # 매수 신호
+            },
+            ...
+        ]
     """
     results = []
 
     for symbol in symbols:
         print(f"  - {symbol} 데이터 수집 중...")
 
-        # 1개월 데이터 가져오기
-        data = fetch_stock_data(symbol, period="1mo")
+        # 52주(1년) 데이터 가져오기
+        data = fetch_stock_data(symbol, period=ANALYSIS_PERIOD)
 
         if data.empty:
             print(f"    ⚠️ {symbol}: 데이터 없음")
             continue
 
-        # MDD 계산
-        mdd = calculate_mdd(data["Close"])
+        # 고점 대비 하락률 계산
+        drawdown_data = calculate_drawdown_from_peak(data["Close"])
 
-        # 현재가 (마지막 종가)
-        current_price = float(data["Close"].iloc[-1])
+        # 매수 신호 확인
+        buy_signal = get_buy_signal(drawdown_data["drawdown_pct"])
 
         results.append({
             "symbol": symbol,
-            "mdd": mdd,
-            "current_price": current_price,
+            "peak_price": drawdown_data["peak_price"],
+            "current_price": drawdown_data["current_price"],
+            "drawdown_pct": drawdown_data["drawdown_pct"],
+            "buy_signal": buy_signal,
         })
 
-        print(f"    ✓ {symbol}: MDD={mdd:.2f}%, 현재가=${current_price:.2f}")
+        # 로그 출력
+        signal_text = f" → {buy_signal}" if buy_signal else " → 관망"
+        print(f"    ✓ {symbol}: {drawdown_data['drawdown_pct']:.1f}% from peak (${drawdown_data['current_price']:.2f}){signal_text}")
 
     return results
 
@@ -81,13 +98,13 @@ async def send_report(notifier: TelegramNotifier) -> bool:
     else:
         print(f"  ⚠️ Error: {fear_greed.get('error', 'Unknown')}")
 
-    # 2. MDD 데이터 수집
-    print(f"\n[2/3] MDD 데이터 수집 중... (종목: {Config.WATCH_SYMBOLS})")
-    mdd_results = collect_mdd_data(Config.WATCH_SYMBOLS)
+    # 2. 52주 고점 대비 하락률 수집
+    print(f"\n[2/3] 52주 고점 대비 하락률 수집 중... (종목: {Config.WATCH_SYMBOLS})")
+    stock_results = collect_stock_data(Config.WATCH_SYMBOLS)
 
     # 3. 텔레그램 전송
     print("\n[3/3] 텔레그램 전송 중...")
-    result = await notifier.send_daily_report(fear_greed, mdd_results)
+    result = await notifier.send_daily_report(fear_greed, stock_results)
 
     if result.get("ok"):
         print(f"  ✓ 전송 완료! (message_id: {result.get('message_id', 'N/A')})")
