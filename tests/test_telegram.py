@@ -13,7 +13,7 @@ from src.notifiers.telegram import TelegramNotifier
 from src.config import Config
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def notifier():
     """
     fixture: TelegramNotifier 인스턴스를 생성해서 재사용
@@ -85,7 +85,8 @@ class TestTelegramNotifier:
             },
         ]
 
-        result = await notifier.send_daily_report(fear_greed, stock_results)
+        # period 인자 추가 (기본값 사용 또는 명시적 지정)
+        result = await notifier.send_daily_report(fear_greed, stock_results, period="1y")
 
         assert result["ok"] is True
 

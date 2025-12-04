@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Stock Alert Bot - 매일 주식 MDD(Maximum Drawdown)와 Fear & Greed Index를 텔레그램으로 알려주는 자동화 봇. crontab을 통해 정해진 시간에 실행됩니다.
+Stock Alert Bot - 주식 고점 대비 하락률과 Fear & Greed Index를 텔레그램으로 알려주는 자동화 봇. crontab 또는 텔레그램 봇 모드로 실행됩니다.
 
 ## Commands
 
@@ -12,8 +12,14 @@ Stock Alert Bot - 매일 주식 MDD(Maximum Drawdown)와 Fear & Greed Index를 �
 # 의존성 설치 (uv 사용)
 uv sync
 
-# 봇 실행
+# 단일 실행 (기본 1년 기준)
 uv run python main.py
+
+# 특정 기간으로 실행
+uv run python main.py --period 6mo
+
+# 텔레그램 봇 모드 (명령어 수신 대기)
+uv run python main.py --bot
 
 # 테스트 실행
 uv run pytest
@@ -31,33 +37,39 @@ uv run ruff format .
 
 ## Architecture
 
+### Execution Modes
+- **단일 실행 모드**: `main.py` → crontab용, 한 번 실행 후 종료
+- **봇 모드**: `main.py --bot` → 텔레그램 명령어 대기 (polling)
+
 ### Data Flow
-1. `main.py` - crontab에서 호출되는 진입점. 모든 모듈을 통합하여 실행
-2. `src/stock/fetcher.py` - yfinance로 주가 데이터 수집 (52주 데이터)
-3. `src/stock/mdd.py` - 고점 대비 하락률 계산 및 분할매수 신호 판단
-4. `src/indicators/fear_greed.py` - CNN Fear & Greed Index API 호출
-5. `src/notifiers/telegram.py` - 비동기(async) 텔레그램 메시지 전송
+1. `main.py` - CLI 파싱 및 실행 모드 결정
+2. `src/config.py` - 환경변수 로드 (ANALYSIS_PERIOD, TELEGRAM_* 등)
+3. `src/stock/fetcher.py` - yfinance로 주가 데이터 수집
+4. `src/stock/mdd.py` - 고점 대비 하락률 계산 및 분할매수 신호 판단
+5. `src/indicators/fear_greed.py` - CNN Fear & Greed Index API 호출
+6. `src/notifiers/telegram.py` - 비동기 메시지 전송 + 봇 명령어 핸들러
 
 ### Key Modules
 
 **MDD 계산 (`src/stock/mdd.py`)**
 - `calculate_mdd()`: 기간 내 최대 낙폭 계산
-- `calculate_drawdown_from_peak()`: 52주 고점 대비 현재 하락률
+- `calculate_drawdown_from_peak()`: 고점 대비 현재 하락률
 - `get_buy_signal()`: 하락률에 따른 분할매수 신호 (-10%: 1차, -20%: 2차, -30%: 3차)
 
-**텔레그램 알림 (`src/notifiers/telegram.py`)**
-- python-telegram-bot 라이브러리 사용
-- `async/await` 패턴으로 비동기 메시지 전송
-- `send_daily_report()`로 포맷된 리포트 전송
+**텔레그램 (`src/notifiers/telegram.py`)**
+- `TelegramNotifier`: 메시지 전송 클래스 (async)
+- `run_telegram_bot()`: 봇 모드 실행 (Application + CommandHandler)
+- 지원 명령어: `/report [기간]`, `/status`, `/help`
 
 ### Configuration
-- `.env` 파일에 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` 설정 필요
-- `src/config.py`에서 환경변수 로드 및 관심 종목 설정 (TSLA, SCHD, SCHG)
+- `.env` 파일에 `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` 필수
+- `ANALYSIS_PERIOD`: 분석 기간 (기본값: 1y)
+- 유효한 기간: `1d`, `5d`, `1mo`, `3mo`, `6mo`, `1y`, `2y`, `5y`, `max`
 
 ## Testing
 
-pytest 사용. 각 모듈별 테스트 파일이 `tests/` 디렉토리에 존재:
+pytest + pytest-asyncio 사용:
 - `test_fetcher.py` - 주가 데이터 수집 테스트
 - `test_mdd.py` - MDD 계산 로직 테스트
 - `test_fear_greed.py` - Fear & Greed API 테스트
-- `test_telegram.py` - 텔레그램 전송 테스트 (pytest-asyncio 사용)
+- `test_telegram.py` - 텔레그램 전송 테스트 (실제 API 호출하는 통합 테스트)

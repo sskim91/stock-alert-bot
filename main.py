@@ -1,20 +1,26 @@
 """Stock Alert Bot - 메인 실행 파일
 
-이 파일은 crontab에서 실행됩니다.
-모든 모듈을 통합하여 일일 주식 리포트를 텔레그램으로 전송합니다.
+이 파일은 crontab 또는 텔레그램 봇 모드로 실행됩니다.
 
 사용법:
-    # 직접 실행
+    # 기본 실행 (환경변수 ANALYSIS_PERIOD 사용, 기본값 1y)
     uv run python main.py
 
+    # 기간 지정 실행
+    uv run python main.py --period 6mo
+
+    # 텔레그램 봇 모드 (명령어 수신 대기)
+    uv run python main.py --bot
+
     # crontab 설정 (매일 오전 9시)
-    0 9 * * * cd /home/ubuntu/dev/stock-alert-bot && /home/ubuntu/.local/bin/uv run python main.py >> /home/ubuntu/logs/stock-alert.log 2>&1
+    0 9 * * * cd /path/to/stock-alert-bot && uv run python main.py >> logs/stock-alert.log 2>&1
 """
 
+import argparse
 import asyncio
+import sys
 from datetime import datetime
 
-# 우리가 만든 모듈들
 from src.config import Config
 from src.stock.fetcher import fetch_stock_data
 from src.stock.mdd import calculate_drawdown_from_peak, get_buy_signal
@@ -22,25 +28,22 @@ from src.indicators.fear_greed import get_fear_greed_index
 from src.notifiers.telegram import TelegramNotifier
 
 
-# 분석 기간 설정 (52주 = 1년)
-ANALYSIS_PERIOD = "1y"
-
-
-def collect_stock_data(symbols: list[str]) -> list[dict]:
+def collect_stock_data(symbols: list[str], period: str) -> list[dict]:
     """
     각 종목의 고점 대비 하락률과 매수 신호를 수집합니다.
 
     Args:
         symbols: 종목 심볼 리스트 (예: ["TSLA", "SCHD", "SCHG"])
+        period: 분석 기간 (예: "1y", "6mo", "3mo")
 
     Returns:
         [
             {
                 "symbol": "TSLA",
-                "peak_price": 500.0,      # 52주 최고가
-                "current_price": 400.0,   # 현재가
-                "drawdown_pct": -20.0,    # 고점 대비 하락률
-                "buy_signal": "2차 매수 (비중 확대)",  # 매수 신호
+                "peak_price": 500.0,
+                "current_price": 400.0,
+                "drawdown_pct": -20.0,
+                "buy_signal": "2차 매수 (비중 확대)",
             },
             ...
         ]
@@ -50,17 +53,13 @@ def collect_stock_data(symbols: list[str]) -> list[dict]:
     for symbol in symbols:
         print(f"  - {symbol} 데이터 수집 중...")
 
-        # 52주(1년) 데이터 가져오기
-        data = fetch_stock_data(symbol, period=ANALYSIS_PERIOD)
+        data = fetch_stock_data(symbol, period=period)
 
         if data.empty:
             print(f"    ⚠️ {symbol}: 데이터 없음")
             continue
 
-        # 고점 대비 하락률 계산
         drawdown_data = calculate_drawdown_from_peak(data["Close"])
-
-        # 매수 신호 확인
         buy_signal = get_buy_signal(drawdown_data["drawdown_pct"])
 
         results.append({
@@ -71,22 +70,28 @@ def collect_stock_data(symbols: list[str]) -> list[dict]:
             "buy_signal": buy_signal,
         })
 
-        # 로그 출력
         signal_text = f" → {buy_signal}" if buy_signal else " → 관망"
         print(f"    ✓ {symbol}: {drawdown_data['drawdown_pct']:.1f}% from peak (${drawdown_data['current_price']:.2f}){signal_text}")
 
     return results
 
 
-async def send_report(notifier: TelegramNotifier) -> bool:
+async def send_report(notifier: TelegramNotifier, period: str) -> bool:
     """
     일일 리포트를 수집하고 텔레그램으로 전송합니다.
+
+    Args:
+        notifier: TelegramNotifier 인스턴스
+        period: 분석 기간
 
     Returns:
         성공 여부
     """
+    period_display = Config.get_period_display(period)
+
     print("\n" + "=" * 50)
     print(f"📊 Stock Alert Report - {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print(f"📅 분석 기간: {period_display}")
     print("=" * 50)
 
     # 1. Fear & Greed Index 수집
@@ -98,13 +103,13 @@ async def send_report(notifier: TelegramNotifier) -> bool:
     else:
         print(f"  ⚠️ Error: {fear_greed.get('error', 'Unknown')}")
 
-    # 2. 52주 고점 대비 하락률 수집
-    print(f"\n[2/3] 52주 고점 대비 하락률 수집 중... (종목: {Config.WATCH_SYMBOLS})")
-    stock_results = collect_stock_data(Config.WATCH_SYMBOLS)
+    # 2. 고점 대비 하락률 수집
+    print(f"\n[2/3] {period_display} 고점 대비 하락률 수집 중... (종목: {Config.WATCH_SYMBOLS})")
+    stock_results = collect_stock_data(Config.WATCH_SYMBOLS, period)
 
     # 3. 텔레그램 전송
     print("\n[3/3] 텔레그램 전송 중...")
-    result = await notifier.send_daily_report(fear_greed, stock_results)
+    result = await notifier.send_daily_report(fear_greed, stock_results, period)
 
     if result.get("ok"):
         print(f"  ✓ 전송 완료! (message_id: {result.get('message_id', 'N/A')})")
@@ -114,39 +119,107 @@ async def send_report(notifier: TelegramNotifier) -> bool:
         return False
 
 
-def main():
-    """메인 함수 - crontab에서 호출됩니다."""
+def run_once(period: str) -> int:
+    """단일 실행 모드 - crontab용"""
     print(f"\n🚀 Stock Alert Bot 시작 - {datetime.now()}")
 
-    # 1. 설정 검증
     if not Config.validate():
         print("❌ 설정 오류! .env 파일을 확인하세요.")
-        return 1  # 에러 코드 반환
+        return 1
 
     print(f"📊 관심 종목: {', '.join(Config.WATCH_SYMBOLS)}")
+    print(f"📅 분석 기간: {Config.get_period_display(period)}")
 
-    # 2. 텔레그램 알리미 생성
     notifier = TelegramNotifier(
         token=Config.TELEGRAM_BOT_TOKEN,
         chat_id=Config.TELEGRAM_CHAT_ID,
     )
 
-    # 3. 리포트 전송 (async 함수 실행)
-    # asyncio.run(): async 함수를 일반 함수에서 실행하는 방법
-    success = asyncio.run(send_report(notifier))
+    success = asyncio.run(send_report(notifier, period))
 
-    # 4. 결과 출력
     print("\n" + "=" * 50)
     if success:
         print("✅ 완료!")
-        return 0  # 성공 코드
+        return 0
     else:
         print("❌ 실패!")
-        return 1  # 에러 코드
+        return 1
+
+
+def run_bot():
+    """봇 모드 - 텔레그램 명령어 수신 대기"""
+    from src.notifiers.telegram import run_telegram_bot
+
+    print(f"\n🤖 Stock Alert Bot (Bot Mode) 시작 - {datetime.now()}")
+
+    if not Config.validate():
+        print("❌ 설정 오류! .env 파일을 확인하세요.")
+        return 1
+
+    print(f"📊 관심 종목: {', '.join(Config.WATCH_SYMBOLS)}")
+    print("📡 텔레그램 명령어 대기 중... (Ctrl+C로 종료)")
+
+    try:
+        run_telegram_bot()
+        return 0
+    except KeyboardInterrupt:
+        print("\n👋 봇 종료")
+        return 0
+
+
+def parse_args():
+    """CLI 인자 파싱"""
+    parser = argparse.ArgumentParser(
+        description="Stock Alert Bot - 주식 MDD와 Fear & Greed Index 알림",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+예시:
+  python main.py                  # 기본 실행 (환경변수 또는 1y)
+  python main.py --period 6mo     # 6개월 기간으로 분석
+  python main.py --period 3mo     # 3개월 기간으로 분석
+  python main.py --bot            # 텔레그램 봇 모드
+
+유효한 기간: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, max
+        """
+    )
+
+    parser.add_argument(
+        "--period", "-p",
+        type=str,
+        default=None,
+        help="분석 기간 (예: 1y, 6mo, 3mo). 미지정시 환경변수 ANALYSIS_PERIOD 또는 1y 사용"
+    )
+
+    parser.add_argument(
+        "--bot", "-b",
+        action="store_true",
+        help="텔레그램 봇 모드로 실행 (명령어 수신 대기)"
+    )
+
+    return parser.parse_args()
+
+
+def main():
+    """메인 함수"""
+    args = parse_args()
+
+    # 봇 모드
+    if args.bot:
+        return run_bot()
+
+    # 단일 실행 모드
+    # 우선순위: CLI 인자 > 환경변수 > 기본값(1y)
+    period = args.period or Config.ANALYSIS_PERIOD
+
+    # 기간 유효성 검사
+    if not Config.is_valid_period(period):
+        print(f"❌ 유효하지 않은 기간: {period}")
+        print(f"   유효한 기간: {', '.join(Config.VALID_PERIODS)}")
+        return 1
+
+    return run_once(period)
 
 
 if __name__ == "__main__":
-    # 스크립트로 직접 실행될 때만 main() 호출
-    # crontab이나 터미널에서 `python main.py` 실행 시
     exit_code = main()
-    exit(exit_code)
+    sys.exit(exit_code)
