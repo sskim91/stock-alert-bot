@@ -67,9 +67,13 @@ class TelegramNotifier:
         # Fear & Greed Index
         score = fear_greed.get("score")
         if score is not None:
-            rating = fear_greed.get("rating", "unknown")
-            emoji = _get_fear_greed_emoji(score)
-            lines.append(f"{emoji} Fear & Greed: {score:.1f} ({rating})")
+            try:
+                score = float(score)
+                rating = fear_greed.get("rating", "unknown")
+                emoji = _get_fear_greed_emoji(score)
+                lines.append(f"{emoji} Fear & Greed: {score:.1f} ({rating})")
+            except (TypeError, ValueError):
+                lines.append(f"⚠️ Fear & Greed: 데이터 오류")
 
             prev = fear_greed.get("previous_close")
             if prev is not None:
@@ -253,7 +257,8 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
     except Exception as e:
-        error_msg = f"오류 발생: {e}"
+        print(f"cmd_report 오류: {e}")  # 서버 로그에만 기록
+        error_msg = "리포트 생성 중 오류가 발생했습니다."
         if processing_msg:
             await processing_msg.edit_text(error_msg)
         else:
@@ -286,14 +291,25 @@ async def scheduled_daily_report(context: ContextTypes.DEFAULT_TYPE):
 
 
 def _parse_alert_time(alert_time: str) -> datetime.time:
-    """ALERT_TIME 문자열을 datetime.time으로 파싱"""
+    """ALERT_TIME 문자열을 datetime.time으로 파싱 (09:00 또는 0900 형식 지원)"""
     try:
-        parts = alert_time.split(":")
-        hour = int(parts[0])
-        minute = int(parts[1]) if len(parts) > 1 else 0
+        alert_time = alert_time.strip()
+
+        if ":" in alert_time:
+            # 09:00 형식
+            parts = alert_time.split(":")
+            hour = int(parts[0])
+            minute = int(parts[1]) if len(parts) > 1 else 0
+        elif len(alert_time) == 4 and alert_time.isdigit():
+            # 0900 형식
+            hour = int(alert_time[:2])
+            minute = int(alert_time[2:])
+        else:
+            raise ValueError(f"Unknown format: {alert_time}")
+
         return datetime.time(hour=hour, minute=minute)
-    except (ValueError, IndexError):
-        print(f"ALERT_TIME 파싱 실패 ({alert_time}), 기본값 09:00 사용")
+    except (ValueError, IndexError) as e:
+        print(f"ALERT_TIME 파싱 실패 ({alert_time}: {e}), 기본값 09:00 사용")
         return datetime.time(hour=9, minute=0)
 
 
