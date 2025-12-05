@@ -15,9 +15,10 @@ python-telegram-bot 라이브러리를 사용한 비동기 메시지 전송 및 
 
 import datetime
 
-from telegram import Bot, Update, BotCommand
-from telegram.ext import Application, CommandHandler, ContextTypes
+from zoneinfo import ZoneInfo
+from telegram import Bot, BotCommand, Update
 from telegram.error import TelegramError
+from telegram.ext import Application, CommandHandler, ContextTypes
 
 from src.config import Config
 
@@ -51,10 +52,10 @@ class TelegramNotifier:
             return {"ok": False, "error": f"에러 발생: {e}"}
 
     async def send_daily_report(
-            self,
-            fear_greed: dict,
-            stock_results: list[dict],
-            period: str = "1y",
+        self,
+        fear_greed: dict,
+        stock_results: list[dict],
+        period: str = "1y",
     ) -> dict:
         """일일 리포트를 포맷팅해서 전송합니다."""
         period_display = Config.get_period_display(period)
@@ -73,7 +74,7 @@ class TelegramNotifier:
                 emoji = _get_fear_greed_emoji(score)
                 lines.append(f"{emoji} Fear & Greed: {score:.1f} ({rating})")
             except (TypeError, ValueError):
-                lines.append(f"⚠️ Fear & Greed: 데이터 오류")
+                lines.append("⚠️ Fear & Greed: 데이터 오류")
 
             prev = fear_greed.get("previous_close")
             if prev is not None:
@@ -138,9 +139,11 @@ def _get_fear_greed_emoji(score: float) -> str:
 # 공통 함수
 # ============================================================
 
+
 async def _fetch_single_stock(symbol: str, period: str) -> dict | None:
     """단일 종목 데이터를 가져와 처리합니다."""
     import asyncio
+
     from src.stock.fetcher import fetch_stock_data
     from src.stock.mdd import calculate_drawdown_from_peak, get_buy_signal
 
@@ -167,11 +170,14 @@ async def _fetch_single_stock(symbol: str, period: str) -> dict | None:
 async def _collect_report_data(period: str) -> tuple[dict, list[dict]]:
     """리포트에 필요한 데이터를 병렬로 수집합니다."""
     import asyncio
+
     from src.indicators.fear_greed import get_fear_greed_index
 
     # Fear & Greed와 주식 데이터를 병렬로 수집
     fear_greed_task = asyncio.to_thread(get_fear_greed_index)
-    stock_tasks = [_fetch_single_stock(symbol, period) for symbol in Config.WATCH_SYMBOLS]
+    stock_tasks = [
+        _fetch_single_stock(symbol, period) for symbol in Config.WATCH_SYMBOLS
+    ]
 
     results = await asyncio.gather(fear_greed_task, *stock_tasks)
 
@@ -315,6 +321,7 @@ async def scheduled_daily_report(context: ContextTypes.DEFAULT_TYPE):
 
 def _parse_alert_time(alert_time: str) -> datetime.time:
     """ALERT_TIME 문자열을 datetime.time으로 파싱 (09:00 또는 0900 형식 지원)"""
+    kst = ZoneInfo("Asia/Seoul")
     try:
         alert_time = alert_time.strip()
 
@@ -330,10 +337,10 @@ def _parse_alert_time(alert_time: str) -> datetime.time:
         else:
             raise ValueError(f"Unknown format: {alert_time}")
 
-        return datetime.time(hour=hour, minute=minute)
+        return datetime.time(hour=hour, minute=minute, tzinfo=kst)
     except (ValueError, IndexError) as e:
         print(f"ALERT_TIME 파싱 실패 ({alert_time}: {e}), 기본값 09:00 사용")
-        return datetime.time(hour=9, minute=0)
+        return datetime.time(hour=9, minute=0, tzinfo=kst)
 
 
 async def post_init(application):
