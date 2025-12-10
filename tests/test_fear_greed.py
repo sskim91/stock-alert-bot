@@ -9,6 +9,7 @@ fixture란?
 """
 
 import pytest
+
 from src.indicators.fear_greed import get_fear_greed_index
 
 

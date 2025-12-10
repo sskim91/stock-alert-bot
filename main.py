@@ -21,11 +21,11 @@ import sys
 from datetime import datetime
 
 from src.config import Config
-from src.stock.fetcher import fetch_stock_data
-from src.stock.mdd import calculate_drawdown_from_peak, get_buy_signal
-from src.stock.ma import calculate_ma, calculate_ma_analysis
 from src.indicators.fear_greed import get_fear_greed_index
 from src.notifiers.telegram import TelegramNotifier
+from src.stock.fetcher import fetch_stock_data
+from src.stock.ma import calculate_ma, calculate_ma_analysis
+from src.stock.mdd import calculate_drawdown_from_peak, get_buy_signal
 
 
 def collect_stock_data(symbols: list[str], period: str) -> list[dict]:
@@ -87,7 +87,9 @@ def collect_stock_data(symbols: list[str], period: str) -> list[dict]:
         results.append(result)
 
         signal_text = f" → {buy_signal}" if buy_signal else " → 관망"
-        print(f"    ✓ {symbol}: {drawdown_data['drawdown_pct']:.1f}% from peak (${drawdown_data['current_price']:.2f}){signal_text}")
+        print(
+            f"    ✓ {symbol}: {drawdown_data['drawdown_pct']:.1f}% from peak (${drawdown_data['current_price']:.2f}){signal_text}"
+        )
 
     return results
 
@@ -115,12 +117,16 @@ async def send_report(notifier: TelegramNotifier, period: str) -> bool:
     fear_greed = get_fear_greed_index()
 
     if fear_greed.get("score") is not None:
-        print(f"  ✓ Score: {fear_greed.get('score'):.1f} ({fear_greed.get('rating', 'unknown')})")
+        print(
+            f"  ✓ Score: {fear_greed.get('score'):.1f} ({fear_greed.get('rating', 'unknown')})"
+        )
     else:
         print(f"  ⚠️ Error: {fear_greed.get('error', 'Unknown')}")
 
     # 2. 고점 대비 하락률 수집
-    print(f"\n[2/3] {period_display} 고점 대비 하락률 수집 중... (종목: {Config.WATCH_SYMBOLS})")
+    print(
+        f"\n[2/3] {period_display} 고점 대비 하락률 수집 중... (종목: {Config.WATCH_SYMBOLS})"
+    )
     stock_results = collect_stock_data(Config.WATCH_SYMBOLS, period)
 
     # 3. 텔레그램 전송
@@ -196,20 +202,22 @@ def parse_args():
   python main.py --bot            # 텔레그램 봇 모드
 
 유효한 기간: 1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, max
-        """
+        """,
     )
 
     parser.add_argument(
-        "--period", "-p",
+        "--period",
+        "-p",
         type=str,
         default=None,
-        help="분석 기간 (예: 1y, 6mo, 3mo). 미지정시 환경변수 ANALYSIS_PERIOD 또는 1y 사용"
+        help="분석 기간 (예: 1y, 6mo, 3mo). 미지정시 환경변수 ANALYSIS_PERIOD 또는 1y 사용",
     )
 
     parser.add_argument(
-        "--bot", "-b",
+        "--bot",
+        "-b",
         action="store_true",
-        help="텔레그램 봇 모드로 실행 (명령어 수신 대기)"
+        help="텔레그램 봇 모드로 실행 (명령어 수신 대기)",
     )
 
     return parser.parse_args()

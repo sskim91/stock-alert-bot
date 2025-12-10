@@ -7,17 +7,17 @@
 """
 
 import pandas as pd
+
 from src.stock.fetcher import fetch_stock_data
 
 
 class TestFetchStockData:
     """fetch_stock_data 함수 테스트"""
 
-    def test_print_dataframe(self) :
+    def test_print_dataframe(self):
         stock_data = fetch_stock_data("QQQM", period="30d")
 
         print(stock_data)
-
 
     def test_valid_symbol_returns_dataframe(self):
         """

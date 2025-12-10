@@ -15,7 +15,6 @@ Fear & Greed Index란?
 
 import requests
 
-
 # CNN Fear & Greed API 주소
 API_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
 

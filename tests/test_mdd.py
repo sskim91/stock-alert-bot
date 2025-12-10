@@ -5,7 +5,8 @@ MDD 계산이 정확한지 다양한 케이스로 검증
 
 import pandas as pd
 import pytest
-from src.stock.mdd import calculate_mdd, calculate_drawdown_from_peak, get_buy_signal
+
+from src.stock.mdd import calculate_drawdown_from_peak, calculate_mdd, get_buy_signal
 
 
 class TestCalculateMdd:

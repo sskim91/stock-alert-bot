@@ -1,10 +1,12 @@
 """주가 데이터 수집 모듈 (yfinance 활용)"""
-import yfinance as yf # 야후 파이낸스에서 주가 데이터를 가져오는 라이브러리
-import pandas as pd # 데이터를 표(테이블) 형태로 다루는 라이브러리
 
-pd.set_option('display.max_columns', None)  # 컬럼 다 보기
-pd.set_option('display.max_rows', None)  # 행도 다 보기 (데이터 많으면 주의!)
-pd.set_option('display.width', None)  # 화면 폭 제한 없음
+import pandas as pd  # 데이터를 표(테이블) 형태로 다루는 라이브러리
+import yfinance as yf  # 야후 파이낸스에서 주가 데이터를 가져오는 라이브러리
+
+pd.set_option("display.max_columns", None)  # 컬럼 다 보기
+pd.set_option("display.max_rows", None)  # 행도 다 보기 (데이터 많으면 주의!)
+pd.set_option("display.width", None)  # 화면 폭 제한 없음
+
 
 def fetch_stock_data(symbol: str, period: str = "1y") -> pd.DataFrame:
     """
@@ -19,7 +21,7 @@ def fetch_stock_data(symbol: str, period: str = "1y") -> pd.DataFrame:
     """
     try:
         ticker = yf.Ticker(symbol)  # 1. 주식 정보 객체 생성
-        data = ticker.history(period=period)    # 2. 해당 기간의 주가 기록 가져오기
+        data = ticker.history(period=period)  # 2. 해당 기간의 주가 기록 가져오기
         if data.empty:
             print(f"'{symbol}'에 대한 데이터를 찾을 수 없습니다.")
             return pd.DataFrame()

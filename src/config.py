@@ -1,6 +1,7 @@
 """설정 관리 모듈"""
 
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,7 +24,17 @@ class Config:
     ANALYSIS_PERIOD: str = os.getenv("ANALYSIS_PERIOD", "1y")
 
     # 유효한 분석 기간 목록
-    VALID_PERIODS: list[str] = ["1d", "5d", "1mo", "3mo", "6mo", "1y", "2y", "5y", "max"]
+    VALID_PERIODS: list[str] = [
+        "1d",
+        "5d",
+        "1mo",
+        "3mo",
+        "6mo",
+        "1y",
+        "2y",
+        "5y",
+        "max",
+    ]
 
     @classmethod
     def get_period_display(cls, period: str) -> str:

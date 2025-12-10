@@ -9,8 +9,9 @@ Async 테스트란?
 """
 
 import pytest
-from src.notifiers.telegram import TelegramNotifier
+
 from src.config import Config
+from src.notifiers.telegram import TelegramNotifier
 
 
 @pytest.fixture
@@ -86,7 +87,9 @@ class TestTelegramNotifier:
         ]
 
         # period 인자 추가 (기본값 사용 또는 명시적 지정)
-        result = await notifier.send_daily_report(fear_greed, stock_results, period="1y")
+        result = await notifier.send_daily_report(
+            fear_greed, stock_results, period="1y"
+        )
 
         assert result["ok"] is True
 

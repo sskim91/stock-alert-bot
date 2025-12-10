@@ -129,7 +129,9 @@ class TelegramNotifier:
 
                     position_text = "위" if ma_position == "above" else "아래"
                     sign = "+" if ma_diff >= 0 else ""
-                    lines.append(f"   📏 200일선: ${ma_price:.2f} ({sign}{ma_diff:.1f}%)")
+                    lines.append(
+                        f"   📏 200일선: ${ma_price:.2f} ({sign}{ma_diff:.1f}%)"
+                    )
                     lines.append(f"   → 현재가가 200일선 {position_text} = {ma_trend}")
 
                 lines.append("")
