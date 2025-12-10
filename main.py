@@ -23,6 +23,7 @@ from datetime import datetime
 from src.config import Config
 from src.stock.fetcher import fetch_stock_data
 from src.stock.mdd import calculate_drawdown_from_peak, get_buy_signal
+from src.stock.ma import calculate_ma, calculate_ma_analysis
 from src.indicators.fear_greed import get_fear_greed_index
 from src.notifiers.telegram import TelegramNotifier
 
@@ -61,13 +62,29 @@ def collect_stock_data(symbols: list[str], period: str) -> list[dict]:
         drawdown_data = calculate_drawdown_from_peak(data["Close"])
         buy_signal = get_buy_signal(drawdown_data["drawdown_pct"])
 
-        results.append({
+        result = {
             "symbol": symbol,
             "peak_price": drawdown_data["peak_price"],
             "current_price": drawdown_data["current_price"],
             "drawdown_pct": drawdown_data["drawdown_pct"],
             "buy_signal": buy_signal,
-        })
+        }
+
+        # TSLA만 200일 이동평균선 분석 추가
+        if symbol == "TSLA":
+            close_prices = data["Close"]
+            # 200일선 계산용 데이터 결정 (부족하면 1년 데이터 사용)
+            ma_prices = close_prices
+            if len(close_prices) < 200:
+                data_1y = fetch_stock_data(symbol, period="1y")
+                if not data_1y.empty:
+                    ma_prices = data_1y["Close"]
+
+            if len(ma_prices) >= 200:
+                ma_200 = calculate_ma(ma_prices, window=200)
+                result["ma_200"] = calculate_ma_analysis(result["current_price"], ma_200)
+
+        results.append(result)
 
         signal_text = f" → {buy_signal}" if buy_signal else " → 관망"
         print(f"    ✓ {symbol}: {drawdown_data['drawdown_pct']:.1f}% from peak (${drawdown_data['current_price']:.2f}){signal_text}")

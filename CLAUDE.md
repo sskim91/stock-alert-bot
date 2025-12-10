@@ -40,8 +40,9 @@ uv run ruff format .
 2. `src/config.py` - 환경변수 로드 (TELEGRAM_*, ANALYSIS_PERIOD, ALERT_TIME)
 3. `src/stock/fetcher.py` - yfinance로 주가 데이터 수집
 4. `src/stock/mdd.py` - 고점 대비 하락률 계산, 분할매수 신호 (-10%: 1차, -20%: 2차, -30%: 3차)
-5. `src/indicators/fear_greed.py` - CNN Fear & Greed Index API 호출
-6. `src/notifiers/telegram.py` - 메시지 전송 + 봇 명령어 + 스케줄러
+5. `src/stock/ma.py` - 200일 이동평균선 계산 (TSLA만 적용)
+6. `src/indicators/fear_greed.py` - CNN Fear & Greed Index API 호출
+7. `src/notifiers/telegram.py` - 메시지 전송 + 봇 명령어 + 스케줄러
 
 ### Telegram Bot Commands
 - `/report`, `/report6mo`, `/report3mo` - 리포트 요청
@@ -51,7 +52,8 @@ uv run ruff format .
 
 ### Key Implementation Details
 - `_collect_report_data()`: Fear & Greed + 주식 데이터를 `asyncio.gather`로 병렬 수집
-- `_parse_alert_time()`: `09:00` 또는 `0900` 형식 모두 지원
+- `asyncio.to_thread()`: yfinance 같은 동기 라이브러리를 비동기로 래핑
+- `_parse_alert_time()`: `09:00` 또는 `0900` 형식 모두 지원, KST(Asia/Seoul) 타임존 사용
 - `post_init()`: 봇 시작 시 BotCommand 메뉴 등록
 
 ## Configuration
@@ -68,4 +70,7 @@ ALERT_TIME=09:00
 
 ## Testing
 
-pytest + pytest-asyncio 사용. `test_telegram.py`는 실제 API를 호출하는 통합 테스트.
+pytest + pytest-asyncio 사용.
+
+- `test_mdd.py`, `test_fetcher.py`, `test_fear_greed.py`: 유닛 테스트 (일부 실제 API 호출)
+- `test_telegram.py`: 통합 테스트 (실제 텔레그램 API 호출, `.env` 설정 필요)

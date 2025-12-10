@@ -13,6 +13,7 @@ python-telegram-bot 라이브러리를 사용한 비동기 메시지 전송 및 
     /help           - 도움말
 """
 
+import asyncio
 import datetime
 
 from zoneinfo import ZoneInfo
@@ -21,6 +22,10 @@ from telegram.error import TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from src.config import Config
+from src.stock.fetcher import fetch_stock_data
+from src.stock.mdd import calculate_drawdown_from_peak, get_buy_signal
+from src.stock.ma import calculate_ma, calculate_ma_analysis
+from src.indicators.fear_greed import get_fear_greed_index
 
 
 class TelegramNotifier:
@@ -113,6 +118,20 @@ class TelegramNotifier:
 
                 lines.append(f"<b>{symbol}</b>  {pct:.1f}%  {signal}")
                 lines.append(f"   ${cur:.2f} → ${peak:.2f}")
+
+                # TSLA 200일 이동평균선 정보 추가
+                ma_200_data = item.get("ma_200")
+                if ma_200_data and ma_200_data.get("ma_200") is not None:
+                    ma_price = ma_200_data["ma_200"]
+                    ma_diff = ma_200_data["diff_pct"]
+                    ma_trend = ma_200_data["trend"]
+                    ma_position = ma_200_data["position"]
+
+                    position_text = "위" if ma_position == "above" else "아래"
+                    sign = "+" if ma_diff >= 0 else ""
+                    lines.append(f"   📏 200일선: ${ma_price:.2f} ({sign}{ma_diff:.1f}%)")
+                    lines.append(f"   → 현재가가 200일선 {position_text} = {ma_trend}")
+
                 lines.append("")
             except (TypeError, ValueError):
                 continue
@@ -142,11 +161,6 @@ def _get_fear_greed_emoji(score: float) -> str:
 
 async def _fetch_single_stock(symbol: str, period: str) -> dict | None:
     """단일 종목 데이터를 가져와 처리합니다."""
-    import asyncio
-
-    from src.stock.fetcher import fetch_stock_data
-    from src.stock.mdd import calculate_drawdown_from_peak, get_buy_signal
-
     data = await asyncio.to_thread(fetch_stock_data, symbol, period)
     if data.empty:
         return None
@@ -158,7 +172,7 @@ async def _fetch_single_stock(symbol: str, period: str) -> dict | None:
     drawdown_data = calculate_drawdown_from_peak(close_prices)
     buy_signal = get_buy_signal(drawdown_data.get("drawdown_pct", 0))
 
-    return {
+    result = {
         "symbol": symbol,
         "peak_price": drawdown_data.get("peak_price", 0),
         "current_price": drawdown_data.get("current_price", 0),
@@ -166,13 +180,25 @@ async def _fetch_single_stock(symbol: str, period: str) -> dict | None:
         "buy_signal": buy_signal,
     }
 
+    # TSLA만 200일 이동평균선 분석 추가
+    if symbol == "TSLA":
+        # 200일선 계산용 데이터 결정 (부족하면 1년 데이터 사용)
+        ma_prices = close_prices
+        if len(close_prices) < 200:
+            data_1y = await asyncio.to_thread(fetch_stock_data, symbol, "1y")
+            if not data_1y.empty:
+                ma_prices = data_1y.get("Close")
+
+        # MA 계산 및 분석
+        if ma_prices is not None and len(ma_prices) >= 200:
+            ma_200 = calculate_ma(ma_prices, window=200)
+            result["ma_200"] = calculate_ma_analysis(result["current_price"], ma_200)
+
+    return result
+
 
 async def _collect_report_data(period: str) -> tuple[dict, list[dict]]:
     """리포트에 필요한 데이터를 병렬로 수집합니다."""
-    import asyncio
-
-    from src.indicators.fear_greed import get_fear_greed_index
-
     # Fear & Greed와 주식 데이터를 병렬로 수집
     fear_greed_task = asyncio.to_thread(get_fear_greed_index)
     stock_tasks = [
