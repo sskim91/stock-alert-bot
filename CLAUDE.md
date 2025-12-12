@@ -38,17 +38,27 @@ uv run ruff format .
 ### Data Flow
 1. `main.py` - CLI 파싱, 실행 모드 결정
 2. `src/config.py` - 환경변수 로드 (TELEGRAM_*, ANALYSIS_PERIOD, ALERT_TIME)
-3. `src/stock/fetcher.py` - yfinance로 주가 데이터 수집
-4. `src/stock/mdd.py` - 고점 대비 하락률 계산, 분할매수 신호 (-10%: 1차, -20%: 2차, -30%: 3차)
-5. `src/stock/ma.py` - 200일 이동평균선 계산 (TSLA만 적용)
-6. `src/indicators/fear_greed.py` - CNN Fear & Greed Index API 호출
-7. `src/notifiers/telegram.py` - 메시지 전송 + 봇 명령어 + 스케줄러
+3. `src/watchlist.py` - 관심 종목 및 MA 설정 관리 (JSON 파일 기반)
+4. `src/stock/fetcher.py` - yfinance로 주가 데이터 수집
+5. `src/stock/mdd.py` - 고점 대비 하락률 계산, 분할매수 신호 (-10%: 1차, -20%: 2차, -30%: 3차)
+6. `src/stock/ma.py` - 200일 이동평균선 계산 (MA 활성화된 종목만 적용)
+7. `src/indicators/fear_greed.py` - CNN Fear & Greed Index API 호출
+8. `src/notifiers/telegram.py` - 메시지 전송 + 봇 명령어 + 스케줄러
 
 ### Telegram Bot Commands
 - `/report`, `/report6mo`, `/report3mo` - 리포트 요청
+- `/list` - 관심 종목 목록 보기
+- `/add AAPL` - 종목 추가
+- `/remove AAPL` - 종목 삭제
+- `/ma TSLA on/off` - 200일선 분석 활성화/비활성화
 - `/status` - 현재 설정 확인
 - `/help` - 도움말
 - Bot Menu (`set_my_commands`)로 고정 명령어 등록
+
+### Watchlist Management
+- 종목 리스트는 `data/watchlist.json`에 저장됨
+- 텔레그램 명령어로 동적 관리 가능
+- `.env`의 `DEFAULT_SYMBOLS`, `DEFAULT_MA_SYMBOLS`는 초기화용 기본값
 
 ### Key Implementation Details
 - `_collect_report_data()`: Fear & Greed + 주식 데이터를 `asyncio.gather`로 병렬 수집
@@ -64,6 +74,10 @@ TELEGRAM_BOT_TOKEN=xxx
 TELEGRAM_CHAT_ID=xxx
 ANALYSIS_PERIOD=1y
 ALERT_TIME=09:00
+
+# 초기화용 기본값 (텔레그램 명령어로 관리 가능)
+DEFAULT_SYMBOLS=TSLA,SCHD,SCHG
+DEFAULT_MA_SYMBOLS=TSLA
 ```
 
 유효한 기간: `1d`, `5d`, `1mo`, `3mo`, `6mo`, `1y`, `2y`, `5y`, `max`

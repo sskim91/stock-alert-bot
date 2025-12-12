@@ -16,3 +16,6 @@ wheels/
 # Davia
 .davia/
 .claude/
+
+# User data (개인 설정)
+data/watchlist.json

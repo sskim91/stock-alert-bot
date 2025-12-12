@@ -22,6 +22,7 @@ from telegram.error import TelegramError
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from src.config import Config
+from src import watchlist
 from src.stock.fetcher import fetch_stock_data
 from src.stock.mdd import calculate_drawdown_from_peak, get_buy_signal
 from src.stock.ma import calculate_ma, calculate_ma_analysis
@@ -182,8 +183,8 @@ async def _fetch_single_stock(symbol: str, period: str) -> dict | None:
         "buy_signal": buy_signal,
     }
 
-    # TSLA만 200일 이동평균선 분석 추가
-    if symbol == "TSLA":
+    # 200일 이동평균선 분석 (활성화된 종목만)
+    if watchlist.is_ma_enabled(symbol):
         # 200일선 계산용 데이터 결정 (부족하면 1년 데이터 사용)
         ma_prices = close_prices
         if len(close_prices) < 200:
@@ -203,9 +204,8 @@ async def _collect_report_data(period: str) -> tuple[dict, list[dict]]:
     """리포트에 필요한 데이터를 병렬로 수집합니다."""
     # Fear & Greed와 주식 데이터를 병렬로 수집
     fear_greed_task = asyncio.to_thread(get_fear_greed_index)
-    stock_tasks = [
-        _fetch_single_stock(symbol, period) for symbol in Config.WATCH_SYMBOLS
-    ]
+    symbols = watchlist.get_all()
+    stock_tasks = [_fetch_single_stock(symbol, period) for symbol in symbols]
 
     results = await asyncio.gather(fear_greed_task, *stock_tasks)
 
@@ -224,6 +224,10 @@ BOT_COMMANDS = [
     BotCommand("report", "📊 리포트 (1년 기준)"),
     BotCommand("report6mo", "📆 6개월 리포트"),
     BotCommand("report3mo", "📆 3개월 리포트"),
+    BotCommand("list", "📋 관심 종목 보기"),
+    BotCommand("add", "➕ 종목 추가"),
+    BotCommand("remove", "➖ 종목 삭제"),
+    BotCommand("ma", "📏 200일선 분석 설정"),
     BotCommand("status", "📈 현재 설정 확인"),
     BotCommand("help", "❓ 도움말"),
 ]
@@ -248,14 +252,25 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """현재 설정 확인 명령어 핸들러"""
-    symbols = ", ".join(Config.WATCH_SYMBOLS)
+    symbols = watchlist.get_all()
+    ma_symbols = watchlist.get_ma_symbols()
     period_display = Config.get_period_display(Config.ANALYSIS_PERIOD)
+
+    # MA 활성화 표시
+    symbol_display = []
+    for s in symbols:
+        if s in ma_symbols:
+            symbol_display.append(f"{s} 📏")
+        else:
+            symbol_display.append(s)
 
     status_text = f"""<b>현재 설정</b>
 
-관심 종목: {symbols}
+관심 종목: {", ".join(symbol_display)}
 분석 기간: {period_display}
-알림 시간: {Config.ALERT_TIME}"""
+알림 시간: {Config.ALERT_TIME}
+
+📏 = 200일선 분석 활성화"""
 
     await update.message.reply_text(status_text, parse_mode="HTML")
 
@@ -320,6 +335,106 @@ async def cmd_report_3mo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """3개월 리포트 명령어 핸들러"""
     context.args = ["3mo"]
     await cmd_report(update, context)
+
+
+async def cmd_list(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """관심 종목 목록 보기"""
+    symbols = watchlist.get_all()
+    ma_symbols = watchlist.get_ma_symbols()
+
+    if not symbols:
+        await update.message.reply_text("등록된 관심 종목이 없습니다.")
+        return
+
+    # MA 활성화 표시
+    symbol_display = []
+    for s in symbols:
+        if s in ma_symbols:
+            symbol_display.append(f"{s} 📏")
+        else:
+            symbol_display.append(s)
+
+    text = f"""<b>📋 관심 종목 ({len(symbols)}개)</b>
+
+{", ".join(symbol_display)}
+
+📏 = 200일선 분석 활성화"""
+
+    await update.message.reply_text(text, parse_mode="HTML")
+
+
+async def cmd_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """종목 추가"""
+    if not context.args:
+        await update.message.reply_text("사용법: /add 종목코드\n예: /add AAPL")
+        return
+
+    symbol = context.args[0].upper()
+    success, message = watchlist.add(symbol)
+
+    if success:
+        symbols = watchlist.get_all()
+        text = f"✅ {message}\n현재 종목: {', '.join(symbols)}"
+    else:
+        text = f"⚠️ {message}"
+
+    await update.message.reply_text(text)
+
+
+async def cmd_remove(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """종목 삭제"""
+    if not context.args:
+        await update.message.reply_text("사용법: /remove 종목코드\n예: /remove AAPL")
+        return
+
+    symbol = context.args[0].upper()
+    success, message = watchlist.remove(symbol)
+
+    if success:
+        symbols = watchlist.get_all()
+        if symbols:
+            text = f"✅ {message}\n현재 종목: {', '.join(symbols)}"
+        else:
+            text = f"✅ {message}\n관심 종목이 비어있습니다."
+    else:
+        text = f"⚠️ {message}"
+
+    await update.message.reply_text(text)
+
+
+async def cmd_ma(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """200일선 분석 설정"""
+    if len(context.args) < 2:
+        ma_symbols = watchlist.get_ma_symbols()
+        if ma_symbols:
+            text = f"사용법: /ma 종목코드 on|off\n예: /ma AAPL on\n\n현재 MA 활성화: {', '.join(ma_symbols)}"
+        else:
+            text = "사용법: /ma 종목코드 on|off\n예: /ma AAPL on\n\n현재 MA 활성화된 종목 없음"
+        await update.message.reply_text(text)
+        return
+
+    symbol = context.args[0].upper()
+    action = context.args[1].lower()
+
+    if action not in ("on", "off"):
+        await update.message.reply_text(
+            "⚠️ on 또는 off를 입력해주세요.\n예: /ma AAPL on"
+        )
+        return
+
+    enabled = action == "on"
+    success, message = watchlist.set_ma(symbol, enabled)
+
+    if success:
+        ma_symbols = watchlist.get_ma_symbols()
+        if ma_symbols:
+            text = f"✅ {message}\nMA 활성화 종목: {', '.join(ma_symbols)}"
+        else:
+            text = f"✅ {message}\nMA 활성화된 종목 없음"
+    else:
+        text = f"⚠️ {message}"
+
+    await update.message.reply_text(text)
 
 
 async def scheduled_daily_report(context: ContextTypes.DEFAULT_TYPE):
@@ -392,6 +507,10 @@ def run_telegram_bot():
     application.add_handler(CommandHandler("report", cmd_report))
     application.add_handler(CommandHandler("report6mo", cmd_report_6mo))
     application.add_handler(CommandHandler("report3mo", cmd_report_3mo))
+    application.add_handler(CommandHandler("list", cmd_list))
+    application.add_handler(CommandHandler("add", cmd_add))
+    application.add_handler(CommandHandler("remove", cmd_remove))
+    application.add_handler(CommandHandler("ma", cmd_ma))
 
     job_queue = application.job_queue
     alert_time = _parse_alert_time(Config.ALERT_TIME)

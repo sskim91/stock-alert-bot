@@ -14,8 +14,9 @@ class Config:
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
 
-    # 관심 종목
-    WATCH_SYMBOLS: list[str] = ["TSLA", "SCHD", "SCHG"]
+    # 관심 종목 (초기화용 기본값, 실제 종목은 watchlist.py에서 관리)
+    DEFAULT_SYMBOLS: str = os.getenv("DEFAULT_SYMBOLS", "TSLA,SCHD,SCHG")
+    DEFAULT_MA_SYMBOLS: str = os.getenv("DEFAULT_MA_SYMBOLS", "TSLA")
 
     # 알림 시간 (24시간 형식)
     ALERT_TIME: str = os.getenv("ALERT_TIME", "09:00")

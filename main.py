@@ -21,6 +21,7 @@ import sys
 from datetime import datetime
 
 from src.config import Config
+from src import watchlist
 from src.indicators.fear_greed import get_fear_greed_index
 from src.notifiers.telegram import TelegramNotifier
 from src.stock.fetcher import fetch_stock_data
@@ -70,8 +71,8 @@ def collect_stock_data(symbols: list[str], period: str) -> list[dict]:
             "buy_signal": buy_signal,
         }
 
-        # TSLA만 200일 이동평균선 분석 추가
-        if symbol == "TSLA":
+        # 200일 이동평균선 분석 (활성화된 종목만)
+        if watchlist.is_ma_enabled(symbol):
             close_prices = data["Close"]
             # 200일선 계산용 데이터 결정 (부족하면 1년 데이터 사용)
             ma_prices = close_prices
@@ -82,7 +83,9 @@ def collect_stock_data(symbols: list[str], period: str) -> list[dict]:
 
             if len(ma_prices) >= 200:
                 ma_200 = calculate_ma(ma_prices, window=200)
-                result["ma_200"] = calculate_ma_analysis(result["current_price"], ma_200)
+                result["ma_200"] = calculate_ma_analysis(
+                    result["current_price"], ma_200
+                )
 
         results.append(result)
 
@@ -124,10 +127,9 @@ async def send_report(notifier: TelegramNotifier, period: str) -> bool:
         print(f"  ⚠️ Error: {fear_greed.get('error', 'Unknown')}")
 
     # 2. 고점 대비 하락률 수집
-    print(
-        f"\n[2/3] {period_display} 고점 대비 하락률 수집 중... (종목: {Config.WATCH_SYMBOLS})"
-    )
-    stock_results = collect_stock_data(Config.WATCH_SYMBOLS, period)
+    symbols = watchlist.get_all()
+    print(f"\n[2/3] {period_display} 고점 대비 하락률 수집 중... (종목: {symbols})")
+    stock_results = collect_stock_data(symbols, period)
 
     # 3. 텔레그램 전송
     print("\n[3/3] 텔레그램 전송 중...")
@@ -149,7 +151,7 @@ def run_once(period: str) -> int:
         print("❌ 설정 오류! .env 파일을 확인하세요.")
         return 1
 
-    print(f"📊 관심 종목: {', '.join(Config.WATCH_SYMBOLS)}")
+    print(f"📊 관심 종목: {', '.join(watchlist.get_all())}")
     print(f"📅 분석 기간: {Config.get_period_display(period)}")
 
     notifier = TelegramNotifier(
@@ -178,7 +180,7 @@ def run_bot():
         print("❌ 설정 오류! .env 파일을 확인하세요.")
         return 1
 
-    print(f"📊 관심 종목: {', '.join(Config.WATCH_SYMBOLS)}")
+    print(f"📊 관심 종목: {', '.join(watchlist.get_all())}")
     print("📡 텔레그램 명령어 대기 중... (Ctrl+C로 종료)")
 
     try:
